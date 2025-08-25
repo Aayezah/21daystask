@@ -1,0 +1,20 @@
+// Function to find highest marks
+function findHighestMarks(marks) {
+    if (marks.length === 0) {
+        return "Array is empty!";
+    }
+
+    let highest = marks[0]; // Assume first element is highest initially
+
+    for (let i = 1; i < marks.length; i++) {
+        if (marks[i] > highest) {
+            highest = marks[i];
+        }
+    }
+
+    return highest;
+}
+
+// Example usage:
+let marks = [78, 92, 85, 69, 95, 88];
+console.log("Highest Marks: " + findHighestMarks(marks));
