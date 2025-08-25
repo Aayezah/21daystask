@@ -1,0 +1,41 @@
+// calculator.js
+// A simple calculator program in JavaScript
+
+const readline = require("readline");
+
+// Create interface for input/output
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+// Function to perform calculation
+function calculate(num1, num2, operator) {
+    switch (operator) {
+        case '+':
+            return num1 + num2;
+        case '-':
+            return num1 - num2;
+        case '*':
+            return num1 * num2;
+        case '/':
+            return num2 !== 0 ? num1 / num2 : "Error! Division by zero.";
+        default:
+            return "Invalid operator!";
+    }
+}
+
+// Ask user for input
+rl.question("Enter first number: ", (first) => {
+    rl.question("Enter second number: ", (second) => {
+        rl.question("Enter operator (+, -, *, /): ", (op) => {
+            const num1 = parseFloat(first);
+            const num2 = parseFloat(second);
+
+            const result = calculate(num1, num2, op);
+            console.log(`\nResult: ${num1} ${op} ${num2} = ${result}`);
+
+            rl.close();
+        });
+    });
+});
