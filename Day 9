@@ -1,0 +1,129 @@
+STUDENT DIRECTORY BACK-END
+
+INSTALLING DEPENDENCIES
+
+mkdir student-directory-backend
+cd student-directory-backend
+npm init -y
+npm install express cors body-parser nodemon
+
+SERVER.JS
+
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+
+const app = express();
+const PORT = 5000;
+
+app.use(cors());
+app.use(bodyParser.json());
+
+// In-memory student list
+let students = [
+  { id: 1, name: "Aayezah", age: 20, course: "Computer Science" },
+  { id: 2, name: "Rahul", age: 22, course: "Mathematics" },
+];
+
+// Routes
+app.get("/students", (req, res) => {
+  res.json(students);
+});
+
+app.post("/students", (req, res) => {
+  const newStudent = { id: Date.now(), ...req.body };
+  students.push(newStudent);
+  res.json(newStudent);
+});
+
+app.delete("/students/:id", (req, res) => {
+  students = students.filter((s) => s.id !== parseInt(req.params.id));
+  res.json({ message: "Student removed" });
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+});
+
+STUDENT DIRECTORY FRONT-END
+
+SETUP REACT
+
+npx create-react-app student-directory-frontend
+cd student-directory-frontend
+npm install axios
+
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+function App() {
+  const [students, setStudents] = useState([]);
+  const [form, setForm] = useState({ name: "", age: "", course: "" });
+
+  // Fetch students
+  useEffect(() => {
+    axios.get("http://localhost:5000/students").then((res) => {
+      setStudents(res.data);
+    });
+  }, []);
+
+  // Add student
+  const addStudent = (e) => {
+    e.preventDefault();
+    axios.post("http://localhost:5000/students", form).then((res) => {
+      setStudents([...students, res.data]);
+      setForm({ name: "", age: "", course: "" });
+    });
+  };
+
+  // Delete student
+  const deleteStudent = (id) => {
+    axios.delete(`http://localhost:5000/students/${id}`).then(() => {
+      setStudents(students.filter((s) => s.id !== id));
+    });
+  };
+
+  return (
+    <div style={{ padding: "20px" }}>
+      <h1>📘 Student Directory</h1>
+
+      {/* Add Student Form */}
+      <form onSubmit={addStudent}>
+        <input
+          type="text"
+          placeholder="Name"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+        />
+        <input
+          type="number"
+          placeholder="Age"
+          value={form.age}
+          onChange={(e) => setForm({ ...form, age: e.target.value })}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Course"
+          value={form.course}
+          onChange={(e) => setForm({ ...form, course: e.target.value })}
+          required
+        />
+        <button type="submit">Add</button>
+      </form>
+
+      {/* Student List */}
+      <ul>
+        {students.map((s) => (
+          <li key={s.id}>
+            {s.name} ({s.age}) - {s.course}
+            <button onClick={() => deleteStudent(s.id)}>❌</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default App;
