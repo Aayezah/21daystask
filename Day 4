@@ -1,0 +1,17 @@
+// Step 1: Import express
+const express = require("express");
+
+// Step 2: Create an app instance
+const app = express();
+
+// Step 3: Define a route
+app.get("/", (req, res) => {
+  res.send("Hello World");
+});
+
+// Step 4: Start the server
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
+node Server .js
