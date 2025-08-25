@@ -1,0 +1,25 @@
+// student.js
+// A simple JavaScript program to print student details
+
+// Define a student object
+const student = {
+    name: "John Doe",
+    age: 20,
+    rollNumber: "A123",
+    course: "Computer Science",
+    subjects: ["Math", "Physics", "Programming"],
+
+    // Method to display details
+    printDetails: function () {
+        console.log("===== Student Details =====");
+        console.log(`Name       : ${this.name}`);
+        console.log(`Age        : ${this.age}`);
+        console.log(`Roll Number: ${this.rollNumber}`);
+        console.log(`Course     : ${this.course}`);
+        console.log("Subjects   : " + this.subjects.join(", "));
+    }
+};
+
+// Call the function
+student.printDetails();
+
