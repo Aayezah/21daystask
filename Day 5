@@ -1,0 +1,24 @@
+// Import express
+const express = require("express");
+
+// Create an app instance
+const app = express();
+
+// Fake students data
+const students = [
+  { id: 1, name: "Aayezah", age: 20, grade: "A" },
+  { id: 2, name: "Rahul", age: 21, grade: "B" },
+  { id: 3, name: "Sneha", age: 19, grade: "A+" },
+  { id: 4, name: "Arjun", age: 22, grade: "C" }
+];
+
+// Define a route to return student list
+app.get("/students", (req, res) => {
+  res.json(students);
+});
+
+// Start the server
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
