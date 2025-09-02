@@ -1,0 +1,314 @@
+// app.js — Single-file real‑time chat app using Node.js, Express, and Socket.IO
+// Run: node app.js  (after installing deps)
+
+import http from 'http';
+import express from 'express';
+import { Server } from 'socket.io';
+import { randomUUID } from 'crypto';
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*' },
+});
+
+const PORT = process.env.PORT || 3000;
+
+// --- In-memory state (demo only) ---
+const users = new Map(); // socket.id -> { id, name }
+const history = []; // last 200 messages
+const MAX_HISTORY = 200;
+
+function escapeHTML(str = '') {
+  return str
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+io.on('connection', (socket) => {
+  // Send current history on connect
+  socket.emit('chat:history', history);
+
+  socket.on('user:join', (name, ack) => {
+    const safeName = (name || '').trim().slice(0, 24) || 'Guest';
+    const user = { id: socket.id, name: safeName };
+    users.set(socket.id, user);
+    io.emit('user:list', Array.from(users.values()));
+    socket.broadcast.emit('system:info', `${escapeHTML(user.name)} joined the chat`);
+    if (ack) ack(user);
+  });
+
+  socket.on('chat:typing', (isTyping) => {
+    const user = users.get(socket.id);
+    if (!user) return;
+    socket.broadcast.emit('chat:typing', { user, isTyping: !!isTyping });
+  });
+
+  socket.on('chat:send', (payload, ack) => {
+    const user = users.get(socket.id) || { id: socket.id, name: 'Guest' };
+    const text = (payload?.text ?? '').toString().slice(0, 2000);
+    const message = {
+      id: randomUUID(),
+      user,
+      text,
+      ts: Date.now(),
+    };
+    if (!text.trim()) return ack && ack({ ok: false, error: 'Empty message' });
+    history.push(message);
+    if (history.length > MAX_HISTORY) history.shift();
+    io.emit('chat:message', message);
+    if (ack) ack({ ok: true, id: message.id });
+  });
+
+  socket.on('disconnect', () => {
+    const user = users.get(socket.id);
+    if (user) {
+      users.delete(socket.id);
+      io.emit('user:list', Array.from(users.values()));
+      socket.broadcast.emit('system:info', `${escapeHTML(user.name)} left the chat`);
+    }
+  });
+});
+
+app.get('/', (req, res) => {
+  res.set('Content-Type', 'text/html');
+  res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Real‑time Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body, #app { height: 100%; }
+    .msg-enter { animation: fadeInUp 0.2s ease-out both; }
+    @keyframes fadeInUp { from { opacity:0; transform: translateY(6px) } to { opacity:1; transform: translateY(0) } }
+    .scrollbar::-webkit-scrollbar { width: 8px; }
+    .scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 8px; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div id="app" class="flex flex-col">
+    <header class="px-4 py-3 bg-white border-b shadow-sm flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-2xl bg-black/80 text-white flex items-center justify-center">💬</div>
+        <h1 class="text-xl font-semibold">Real‑time Chat</h1>
+        <span id="status" class="ml-2 text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">online</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500">You are</span>
+        <strong id="me" class="text-sm"></strong>
+      </div>
+    </header>
+
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-4 gap-0">
+      <!-- Sidebar: online users -->
+      <aside class="hidden md:block md:col-span-1 border-r bg-white">
+        <div class="p-4 flex items-center justify-between">
+          <h2 class="font-medium">Online</h2>
+          <span id="count" class="text-xs text-gray-500">0</span>
+        </div>
+        <ul id="users" class="px-2 pb-2 space-y-1 overflow-y-auto h-[calc(100vh-140px)] scrollbar"></ul>
+      </aside>
+
+      <!-- Chat -->
+      <section class="md:col-span-3 flex flex-col">
+        <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 h-[calc(100vh-200px)] scrollbar"></div>
+        <div id="typing" class="px-4 text-xs text-gray-500 h-5"></div>
+        <form id="form" class="p-3 bg-white border-t flex items-center gap-2">
+          <input id="input" autocomplete="off" placeholder="Type a message" class="flex-1 border rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-300" />
+          <button class="px-4 py-3 rounded-2xl bg-black text-white font-medium">Send</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="nameDialog" class="rounded-xl p-0 border w-11/12 md:w-[420px]">
+    <form method="dialog" id="nameForm" class="p-6">
+      <h3 class="text-lg font-semibold mb-2">Pick a display name</h3>
+      <p class="text-sm text-gray-500 mb-4">This will be visible to others in the chat.</p>
+      <input id="nameInput" class="w-full border rounded-xl px-4 py-3 mb-4" placeholder="e.g., Aayezah" />
+      <div class="flex justify-end gap-2">
+        <button value="cancel" class="px-4 py-2 rounded-xl border">Cancel</button>
+        <button id="saveName" value="default" class="px-4 py-2 rounded-xl bg-black text-white">Join</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const meEl = document.getElementById('me');
+    const statusEl = document.getElementById('status');
+    const usersEl = document.getElementById('users');
+    const countEl = document.getElementById('count');
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const formEl = document.getElementById('form');
+    const typingEl = document.getElementById('typing');
+
+    const nameDialog = document.getElementById('nameDialog');
+    const nameInput = document.getElementById('nameInput');
+    const nameForm = document.getElementById('nameForm');
+
+    let me = null;
+    let typingTimeout = null;
+
+    function escapeHTML(str = ''){
+      return str
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'",'&#39;');
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderMessage(msg, self=false, delivered=false){
+      const div = document.createElement('div');
+      div.className = 'msg-enter';
+      const bubble = document.createElement('div');
+      bubble.className = 'inline-block max-w-[85%] rounded-2xl px-4 py-2 shadow-sm ' + (self ? 'bg-black text-white' : 'bg-white');
+      bubble.innerHTML = `<div class='text-xs ${self ? 'text-white/70' : 'text-gray-500'} mb-0.5'>${escapeHTML(msg.user.name)} · ${formatTime(msg.ts)}</div><div class='whitespace-pre-wrap break-words'>${escapeHTML(msg.text)}</div>`;
+      const row = document.createElement('div');
+      row.className = 'flex ' + (self ? 'justify-end' : 'justify-start');
+      row.appendChild(bubble);
+      div.appendChild(row);
+      if (self) {
+        const meta = document.createElement('div');
+        meta.className = 'text-[10px] text-gray-400 mt-0.5 text-right pr-2';
+        meta.textContent = delivered ? 'Delivered ✓' : 'Sending…';
+        div.appendChild(meta);
+      }
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function renderSystem(text){
+      const p = document.createElement('div');
+      p.className = 'text-center text-xs text-gray-400 my-2';
+      p.textContent = text;
+      messagesEl.appendChild(p);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function renderUsers(list){
+      usersEl.innerHTML = '';
+      countEl.textContent = list.length;
+      list.forEach(u => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-gray-50';
+        li.innerHTML = `<div class='w-6 h-6 rounded-full bg-gray-900 text-white flex items-center justify-center text-[10px]'>${escapeHTML(u.name[0] || '?')}</div><div class='text-sm'>${escapeHTML(u.name)}</div>`;
+        usersEl.appendChild(li);
+      });
+    }
+
+    // Connection status UI
+    socket.on('connect', () => {
+      statusEl.textContent = 'online';
+      statusEl.className = 'ml-2 text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700';
+    });
+    socket.on('disconnect', () => {
+      statusEl.textContent = 'offline';
+      statusEl.className = 'ml-2 text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700';
+    });
+
+    // Initial history
+    socket.on('chat:history', (items) => {
+      items.forEach(m => renderMessage(m, me && m.user.id === me.id, true));
+    });
+
+    // Users list updates
+    socket.on('user:list', renderUsers);
+
+    // System events
+    socket.on('system:info', renderSystem);
+
+    // Incoming messages
+    socket.on('chat:message', (msg) => {
+      const self = me && msg.user.id === me.id;
+      renderMessage(msg, self, true);
+    });
+
+    // Typing indicator
+    socket.on('chat:typing', ({ user, isTyping }) => {
+      if (isTyping) {
+        typingEl.textContent = `${user.name} is typing…`;
+      } else {
+        typingEl.textContent = '';
+      }
+    });
+
+    // Send message
+    formEl.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = (inputEl.value || '').trim();
+      if (!text) return;
+      const local = { id: 'local-'+Math.random().toString(36).slice(2), user: me || { id: 'me', name: 'Me' }, text, ts: Date.now() };
+      const holder = renderMessage(local, true, false);
+      socket.emit('chat:send', { text }, (res) => {
+        const meta = holder.querySelector('div.text-\[10px\]');
+        if (res?.ok) {
+          meta.textContent = 'Delivered ✓';
+        } else {
+          meta.textContent = 'Failed to send';
+          meta.className = 'text-[10px] text-rose-500 mt-0.5 text-right pr-2';
+        }
+      });
+      inputEl.value = '';
+      socket.emit('chat:typing', false);
+    });
+
+    // Typing events
+    inputEl.addEventListener('input', () => {
+      socket.emit('chat:typing', true);
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => socket.emit('chat:typing', false), 1200);
+    });
+
+    // Prompt for name
+    function askName(){
+      nameInput.value = localStorage.getItem('chat:name') || '';
+      nameDialog.showModal();
+    }
+    nameForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      if (!name) return;
+      localStorage.setItem('chat:name', name);
+      nameDialog.close();
+      socket.emit('user:join', name, (user) => {
+        me = user;
+        meEl.textContent = user.name;
+      });
+    });
+
+    // Auto-open prompt if no name saved
+    const saved = localStorage.getItem('chat:name');
+    if (!saved) {
+      askName();
+    } else {
+      socket.emit('user:join', saved, (user) => { me = user; meEl.textContent = user.name; });
+    }
+  </script>
+</body>
+</html>`);
+});
+
+// Optional: basic health check
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Prevent favicon 404 spam
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
+server.listen(PORT, () => {
+  console.log(`⚡ Chat running: http://localhost:${PORT}`);
+});
